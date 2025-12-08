@@ -50,7 +50,7 @@ def create_final_dataset_fixed():
 
     # 3. SAVE
     df_clean = df.dropna(subset=['sequence'])
-    output_filename = 'scop_sim2real_dataset_v1.csv'
+    output_filename = 'sampled_dataset_with_seqs.csv'
     df_clean.to_csv(output_filename, index=False)
     
     print(f"\nSaved correct dataset to {output_filename}")

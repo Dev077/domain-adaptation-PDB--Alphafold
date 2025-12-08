@@ -1,3 +1,5 @@
 /.venv
-/Users/devchaudhari/Documents/GitHub/CS-4451-/data/pdb
+data/pdb
+data/alphafold
+/sifts_mapping.csv.gz
 
