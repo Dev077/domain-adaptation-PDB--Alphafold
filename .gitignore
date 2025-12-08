@@ -2,4 +2,6 @@
 data/pdb
 data/alphafold
 /sifts_mapping.csv.gz
+/data.zip
+/final_matched_dataset.csv
 
