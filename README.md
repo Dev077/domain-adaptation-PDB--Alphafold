@@ -57,3 +57,6 @@ If you need to regenerate the features from scratch, execute the following scrip
   * **Script:** `data_verifyication.py`
   * **Action:** Checks array shapes and visualizes the domain shift between PDB and AlphaFold maps.
   * **Output:** Console stats and Matplotlib plots.
+-----
+## Paper
+The full research paper detailing our methodology, results, and analysis is available [here](https://github.com/Dev077/domain-adaptation-PDB--Alphafold/blob/main/paper/Domain%20Adaptions%20on%203D%20Protein%20Structures%20with%20AlphaFold2.pdf).
