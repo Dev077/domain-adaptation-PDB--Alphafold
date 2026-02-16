@@ -59,7 +59,7 @@ If you need to regenerate the features from scratch, execute the following scrip
   * **Action:** Checks array shapes and visualizes the domain shift between PDB and AlphaFold maps.
   * **Output:** Console stats and Matplotlib plots.
 -----
-## Architecture Diagram
+
 ## Architecture
 
 > **TL;DR:** `128×128 Contact Map → 4-Layer CNN → 256-d Latent Space → Adversarial Alignment → 7-Class Prediction`
