@@ -58,3 +58,108 @@ If you need to regenerate the features from scratch, execute the following scrip
   * **Script:** `data_verifyication.py`
   * **Action:** Checks array shapes and visualizes the domain shift between PDB and AlphaFold maps.
   * **Output:** Console stats and Matplotlib plots.
+-----
+## Architecture Diagram
+## Architecture
+
+> **TL;DR:** `128×128 Contact Map → 4-Layer CNN → 256-d Latent Space → Adversarial Alignment → 7-Class Prediction`
+
+---
+
+### 1. Input Representation
+
+The architecture does not ingest raw 3D coordinates — it operates on a **geometric projection** of protein structure.
+
+| Property | Value |
+|---|---|
+| **Tensor shape** | `(B, 1, 128, 128)` |
+| **Batch size** | `B = 64` |
+| **Data type** | Single-channel Float32 |
+
+**Biological encoding pipeline:**
+
+- Compute pairwise Euclidean distances between **Cα (Carbon-Alpha)** atoms
+- Apply a binary contact threshold at **8 Å** — atom pairs closer than 8 Angstroms are marked as contacts
+- Normalize variable-length proteins to `128×128` using spline interpolation via `scipy.ndimage.zoom`, preserving local topological density
+
+The resulting contact map is a **rotation-invariant** 2D representation of the protein's tertiary structure.
+
+---
+
+### 2. Feature Extractor (Backbone)
+
+A custom **4-stage CNN** trained from scratch. No ImageNet pre-training is used — features learned from natural images (cats, dogs, textures) do not transfer well to protein contact manifolds.
+
+Each stage follows the pattern: `Conv2d → BatchNorm → ReLU → MaxPool(2)`
+
+| Stage | Operation | Output | Biological Scale |
+|---|---|---|---|
+| **Conv 1** | `Conv2d(1, 32, k=3, pad=1)` | `32 × 64 × 64` | Local atomic interactions (Van der Waals) |
+| **Conv 2** | `Conv2d(32, 64, k=3, pad=1)` | `64 × 32 × 32` | Secondary structures (α-helices) |
+| **Conv 3** | `Conv2d(64, 128, k=3, pad=1)` | `128 × 16 × 16` | Super-secondary motifs (β-sheets, hairpins) |
+| **Conv 4** | `Conv2d(128, 256, k=3, pad=1)` | `256 × 8 × 8` | Tertiary folds (global topology) |
+
+**Bottleneck — Global Average Pooling (GAP):** Instead of flattening `256 × 8 × 8 = 16,384` parameters, GAP averages each 8×8 feature map into a single scalar, producing the final latent vector **z ∈ ℝ²⁵⁶**.
+
+---
+
+### 3. Fold Classifier (Task Head)
+
+A standard MLP attached to the latent vector:
+
+```
+Linear(256, 128) → ReLU → Dropout(p=0.5) → Linear(128, 7)
+```
+
+- **Dropout at 50%** is critical — the PDB source dataset is small (~10k samples) and prone to overfitting
+- Output produces softmax logits over the **7 SCOP fold classes**
+
+---
+
+### 4. Domain Adaptation Mechanisms
+
+This is where the three models diverge. All operate on the shared 256-d latent space **z**.
+
+#### A. DANN — Gradient Reversal
+
+The encoder and classifier are **shared**. A third branch — the **domain discriminator** — is attached to z.
+
+```
+Discriminator: Linear(256, 1024) → ReLU → Dropout → Linear(1024, 1) → Sigmoid
+```
+
+The key mechanism is the **Gradient Reversal Layer (GRL)**:
+
+| Pass | Behavior |
+|---|---|
+| Forward | Identity: `x → x` |
+| Backward | Inverts gradient: `∇ × (−λ)` |
+
+λ ramps from `0 → 1` during training. The encoder learns to **maximize** domain classification error (confusion), while the discriminator tries to minimize it.
+
+#### B. ADDA — Adversarial Discriminative Domain Adaptation
+
+The encoder weights are **decoupled**:
+
+- **Source Encoder (Eₛ):** Pre-trained on PDB, then **frozen**
+- **Target Encoder (Eₜ):** Initialized from Eₛ weights, but **learnable**
+
+The minimax game:
+
+- The **discriminator** tries to distinguish `Eₛ(x_pdb)` from `Eₜ(x_af)`
+- The **target encoder** tries to map AlphaFold inputs into the same region of the 256-d latent space as the source encoder
+
+Loss function: `BCEWithLogitsLoss` (standard GAN loss).
+
+#### C. WDGRL — Wasserstein Distance Guided Representation Learning
+
+Architecturally similar to DANN, but the domain head is a **critic** rather than a discriminator:
+
+- **Output:** Unbounded scalar score ∈ ℝ (not a probability)
+- **Constraint:** 1-Lipschitz enforced via weight clipping `[−0.01, 0.01]`
+- **Update ratio:** 5 critic steps per 1 generator step
+
+> **Note:** The aggressive weight clipping reduced the critic's capacity, leading to vanishing gradients — this is why ADDA outperformed WDGRL in the final benchmark despite WDGRL's theoretically stronger distance metric.
+<img width="1054" height="821" alt="Screenshot 2026-02-16 at 1 10 30 AM" src="https://github.com/user-attachments/assets/4c0d3769-b8ae-4c0d-b4b9-12823b596dbb" />
+
+
